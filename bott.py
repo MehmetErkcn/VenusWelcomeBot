@@ -1,18 +1,75 @@
-
-
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
-from telegram import ParseMode
-
+# -*- coding: utf-8 -*-
 
 import logging
+from typing import Tuple
+from telegram import __version__ as TG_VER
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
+from telegram.constants import ParseMode
+from telegram.error import BadRequest
+from telegram import ChatPermissions, ChatMemberUpdated, ChatMember
+from telegram.ext import ChatMemberHandler
+from telegram.ext import CallbackContext
+import asyncio
+
+import time
 import os
 from dotenv import load_dotenv
+from warnings import filterwarnings
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
+)
 
+from telegram.warnings import PTBUserWarning
+
+filterwarnings(action="ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
+
+try:
+    from telegram import __version_info__
+except ImportError:
+    __version_info__ = (0, 0, 0, 0, 0)  # type: ignore[assignment]
+
+if __version_info__ < (20, 0, 0, "alpha", 1):
+    raise RuntimeError(
+        f"This example is not compatible with your current PTB version {TG_VER}. To view the "
+        f"{TG_VER} version of this example, "
+        f"visit https://docs.python-telegram-bot.org/en/v{TG_VER}/examples.html"
+    )
+from telegram import ForceReply, Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+
+log_file = '/bots/venuswelcome/welcomelog.log'
+
+# Enable logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+handler = logging.FileHandler(log_file, encoding='utf-8')
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logging.getLogger('').addHandler(handler)
+
+#logging.info('Starting')
+
+# Stages
+START_ROUTES, END_ROUTES = range(2)
+# Callback data
+welcome, startt, about, audits, xvs, groups, youtube, faq, updates, back, tutorial = range(11)
+
+# Create an empty dictionary to store new members' names and status
+new_members = {}
+groupid = 1
+messageid = 1
 
 
 load_dotenv()
 TOKEN = os.getenv("SECRETARY_BOT_TOKEN")
+
+deletetime= os.getenv("deletetime")
 
 group1= os.getenv("group1")
 group2= os.getenv("group2")
@@ -56,86 +113,225 @@ urlgroup18= os.getenv("urlgroup18")
 urlgroup19= os.getenv("urlgroup19")
 urlgroup20= os.getenv("urlgroup20")
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+#updater = Updater(token=TOKEN, use_context=True)
+#dispatcher = updater.dispatcher
 
-updater = Updater(token=TOKEN, use_context=True)
-dispatcher = updater.dispatcher
 
-def start(update, context):
-    photo_file = open('venus.jpg', 'rb')
-    keyboard =  [[InlineKeyboardButton("Get started on Venus.io", url="https://venus.io")],
-                [InlineKeyboardButton("About Venus Protocol", callback_data='about')],
-                [InlineKeyboardButton("Native token is $XVS", callback_data='xvs')],
-                [InlineKeyboardButton("Venus Telegram Group", url="https://t.me/venusprotocol")],
-                [InlineKeyboardButton("Venus Language Groups", callback_data='groups')],
-                [InlineKeyboardButton("Venus Protocol on YouTube", callback_data='youtube')],
-                [InlineKeyboardButton("Updates and News", callback_data='updates')],
-                [InlineKeyboardButton("FAQ Venus Protocol", callback_data='faq')],
-                [InlineKeyboardButton("Venus All Social Media Links", url="https://linktr.ee/venusprotocol")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    mread = '<b>What is Venus Protocol?</b>\nVenus Protocol is the top algorithmic-based money market system on the BNB Chain, designed to enable completely decentralized finance-based lending and credit system for its users.'
-    update.message.reply_photo(photo=photo_file, parse_mode=ParseMode.HTML)
-    update.message.reply_text(mread, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#    print("welcome")
+    """Greets new users in chats and announces when someone leaves"""
+    result = extract_status_change(update.chat_member)
+    if result is None:
+        return
+
+    was_member, is_member = result
+#    cause_name = update.chat_member.from_user.mention_html()
+#    member_name = update.chat_member.new_chat_member.user.mention_html()
+#    print(cause_name)
+#    time.sleep(0.1)
+#    print(member_name)
+#    time.sleep(0.1)
+#    new_member = update.chat_member.new_chat_member
+#    query = update.callback_query
+    username = update.chat_member.new_chat_member.user.username
+#    print(new_member)
+#    time.sleep(0.1)
+
+    if not was_member and is_member:
+#        print("katıldı")
+#       Mute group
+        try:
+            await context.bot.restrict_chat_member(
+            chat_id=update.chat_member.chat.id,
+            user_id=update.chat_member.new_chat_member.user.id,
+            permissions=ChatPermissions(can_send_messages=False))
+        except BadRequest:
+            pass
+
+        keyboard = [
+            [InlineKeyboardButton("Get Tutorial & Unmute Me", url=f"http://t.me/{context.bot.username}?start=tutorial")]
+        ]
+#       print("buton waiting")
+#       print(f'Welcome @{username}!\nClick button to open Welcome Chat with Tutorials.')
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        wmessage = await context.bot.send_message(chat_id=update.effective_chat.id, text=f'Welcome @{username}!\nClick button to open Welcome Chat with Tutorials.', reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+#       print("deleting welcome")
+        try:
+#            time.sleep(0.1)
+            await context.bot.delete_message(chat_id=update.message.chat_id, message_id=update.message.message_id)
+        except Exception as e:
+            pass
+
+        asyncio.create_task(wait_and_delete(context, wmessage.chat_id, wmessage.message_id, int(deletetime)))
+
+        user = update.effective_user
+        group = update.effective_chat
+        logger.info("Username @%s name %s joined the group @%s", user.username, user.first_name, group.username)
+
+#        for new_member in update.chat_member.new_chat_member:
+        new_members[update.chat_member.new_chat_member.user.id] = True
+        global groupid
+        global messageid
+        groupid = update.effective_chat.id
+        messageid = wmessage.message_id
+            
+#       print(messageid)
+#       print(groupid)
+#       print(new_members)
+    elif was_member and not is_member:
+        pass
+#       print("ayrıldı")
+
+
+def extract_status_change(chat_member_update: ChatMemberUpdated) -> Tuple[bool, bool]:
+    """Takes a ChatMemberUpdated instance and extracts whether the 'old_chat_member' was a member
+    of the chat and whether the 'new_chat_member' is a member of the chat. Returns a tuple of
+    booleans indicating whether the member was in the group before and after the update.
+    """
+    old_status = chat_member_update.old_chat_member.status
+    new_status = chat_member_update.new_chat_member.status
+#    old_is_member = chat_member_update.old_chat_member.is_member
+#    new_is_member = chat_member_update.new_chat_member.is_member
+    try:
+        new_is_member = chat_member_update.new_chat_member.is_member
+    except:
+        pass # hatayı görmezden gelmek için hiçbir şey yapmayın
+
+    try:
+        old_is_member = chat_member_update.old_chat_member.is_member
+    except:
+        pass # hatayı görmezden gelmek için hiçbir şey yapmayın
+
+    was_member = old_status in [
+        ChatMember.MEMBER,
+        ChatMember.OWNER,
+        ChatMember.ADMINISTRATOR,
+    ] or (old_status == ChatMember.RESTRICTED and old_is_member is True)
+
+    is_member = new_status in [
+        ChatMember.MEMBER,
+        ChatMember.OWNER,
+        ChatMember.ADMINISTRATOR,
+    ] or (new_status == ChatMember.RESTRICTED and new_is_member is True)
+
+    if not was_member and is_member:
+#        print("New member joined the group") 
+        pass
+    elif was_member and not is_member:
+#        print("Member left the group")
+        pass
+    elif was_member and is_member:
+#        print("Member's status changed") 
+        pass
+    else:
+#        print("Member is not a member of the group anymore") 
+        pass
+
+    return was_member, is_member
+
+    
+async def wait_and_delete(context: CallbackContext, chat_id: int, message_id: int, delay: int):
+    await asyncio.sleep(delay)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except:
+        pass
     
 
-def startt(update, context):
-    photo_file = open('venus.jpg', 'rb')
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#    photo_file = open('/bots/venuswelcome/venus.jpg', 'rb')
+    user = update.message.from_user
+    logger.info("User @%s %s started the conversation.", user.username, user.first_name)
     keyboard =  [[InlineKeyboardButton("Get started on Venus.io", url="https://venus.io")],
-                [InlineKeyboardButton("About Venus Protocol", callback_data='about')],
-                [InlineKeyboardButton("Native token is $XVS", callback_data='xvs')],
+                [InlineKeyboardButton("About Venus Protocol", callback_data=str(about))],
+                [InlineKeyboardButton("Native token is $XVS", callback_data=str(xvs))],
                 [InlineKeyboardButton("Venus Telegram Group", url="https://t.me/venusprotocol")],
-                [InlineKeyboardButton("Venus Language Groups", callback_data='groups')],
-                [InlineKeyboardButton("Venus Protocol on YouTube", callback_data='youtube')],
-                [InlineKeyboardButton("Updates and News", callback_data='updates')],
-                [InlineKeyboardButton("FAQ Venus Protocol", callback_data='faq')],
+                [InlineKeyboardButton("Venus Language Groups", callback_data=str(groups))],
+                [InlineKeyboardButton("Venus Protocol on YouTube", callback_data=str(youtube))],
+                [InlineKeyboardButton("Updates and News", callback_data=str(updates))],
+                [InlineKeyboardButton("FAQ Venus Protocol", callback_data=str(faq))],
                 [InlineKeyboardButton("Venus All Social Media Links", url="https://linktr.ee/venusprotocol")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    query = update.callback_query
     mread = '<b>What is Venus Protocol?</b>\nVenus Protocol is the top algorithmic-based money market system on the BNB Chain, designed to enable completely decentralized finance-based lending and credit system for its users.'
-    query.edit_message_text(text=mread, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    await update.message.reply_html(mread, reply_markup=reply_markup)
+    
+    user = update.message.from_user
+    id = user.id
+    if id in new_members and new_members[id]:
+        # If the user is in the dictionary and their status is True, unmute them
+        try:
+            await context.bot.delete_message(chat_id=groupid, message_id=messageid)
+#            print("silindi")
+        except:
+            pass
+        
+        try:
+            await context.bot.restrict_chat_member(
+            chat_id=groupid,
+            user_id=user.id,
+            permissions=ChatPermissions(can_send_messages=True))
+            logger.info("User @%s %s started the conversation and unmuted.", user.username, user.first_name)
+        except BadRequest:
+            pass
+        new_members[id] = False
+    #update.message.reply_photo(photo=photo_file, parse_mode=ParseMode.HTML)
+    #update.message.reply_text(mread, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    return START_ROUTES
+
+
+async def startt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+#    photo_file = open('/bots/venuswelcome/venus.jpg', 'rb')
+    keyboard =  [[InlineKeyboardButton("Get started on Venus.io", url="https://venus.io")],
+                [InlineKeyboardButton("About Venus Protocol", callback_data=str(about))],
+                [InlineKeyboardButton("Native token is $XVS", callback_data=str(xvs))],
+                [InlineKeyboardButton("Venus Telegram Group", url="https://t.me/venusprotocol")],
+                [InlineKeyboardButton("Venus Language Groups", callback_data=str(groups))],
+                [InlineKeyboardButton("Venus Protocol on YouTube", callback_data=str(youtube))],
+                [InlineKeyboardButton("Updates and News", callback_data=str(updates))],
+                [InlineKeyboardButton("FAQ Venus Protocol", callback_data=str(faq))],
+                [InlineKeyboardButton("Venus All Social Media Links", url="https://linktr.ee/venusprotocol")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    mread = '<b>What is Venus Protocol?</b>\nVenus Protocol is the top algorithmic-based money market system on the BNB Chain, designed to enable completely decentralized finance-based lending and credit system for its users.'
+    await query.edit_message_text(mread, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 #    query.edit_reply_photo(photo=photo_file, caption=mread, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
-def about_menu(update, context):
-    keyboard = [[InlineKeyboardButton("Community Forum (Proposal ideas and discussions)", url='https://community.venus.io/')],
-                [InlineKeyboardButton("Audits", callback_data='audits')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+async def about_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    query.edit_message_text(text="Welcome to the About menu. Please select an option.", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("Community Forum (Proposal ideas and discussions)", url='https://community.venus.io/')],
+                [InlineKeyboardButton("Audits", callback_data=str(audits))],
+                [InlineKeyboardButton("Back", callback_data=str(back))]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text="Welcome to the About menu. <b>Please select an option..</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    return START_ROUTES
 
-def audits_menu(update, context):
+async def audits_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
     keyboard = [[InlineKeyboardButton("CertiK Audit of Venus Protocol", url='https://docs.venus.io/docs/security#introduction')],
                 [InlineKeyboardButton("PeckShield Audit of Venus Protocol", url='https://github.com/peckshield/publications/blob/master/audit_reports/PeckShield-Audit-Report-VenusGrant-v1.0.pdf')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
+                [InlineKeyboardButton("Back", callback_data=str(back))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    query = update.callback_query
-    query.edit_message_text(text="Welcome to the Audits menu. To review the details, please select an option.", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     
-def xvs_menu(update, context):
-    keyboard = [[InlineKeyboardButton("Back", callback_data='back')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text="Welcome to the Audits menu. <b>Please select an option..</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    
+async def xvs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    mxvs = "Users can use XVS for Venus Protocol DAO governance and also earn various rewards by staking their XVS in the Venus Protocol's vault and protocol"
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("Back", callback_data=str(back))]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    mxvs = "Users can use <b>$XVS</b> for Venus Protocol DAO governance and also earn various rewards by staking their <b>$XVS</b> in the Venus Protocol's vault and protocol"
     contract = "<code>0xcf6bb5389c92bdda8a3747ddb454cb7a64626c63</code>"
-    query.edit_message_text(text=mxvs + "\n\n <b>XVS contract address</b> 👇\n" + contract, reply_markup=reply_markup, parse_mode="HTML")
+    await query.edit_message_text(text=mxvs + "\n\n <b>XVS contract address</b> \U0001F447\n" + contract, reply_markup=reply_markup, parse_mode="HTML")
 
 
-def support_menu(update, context):
-    keyboard = [[InlineKeyboardButton("Destek 1", callback_data='support1')],
-                [InlineKeyboardButton("Destek 2", callback_data='support2')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+async def groups_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    query.edit_message_text(text="Destek menüsüne hoş geldiniz. Lütfen bir seçenek seçin.", reply_markup=reply_markup)
-
-def group1_menu(update, context):
-    keyboard = [[InlineKeyboardButton("Back", callback_data='back')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query = update.callback_query
-    query.edit_message_text(text="Destek menüsüne hoş geldiniz. Lütfen bir seçenek seçin.", reply_markup=reply_markup)
-
-def groups_menu(update, context):
+    await query.answer()
     keyboard =[[InlineKeyboardButton(group1, url=urlgroup1),
                 InlineKeyboardButton(group2, url=urlgroup2)],
                 [InlineKeyboardButton(group3, url=urlgroup3),
@@ -156,82 +352,100 @@ def groups_menu(update, context):
                 InlineKeyboardButton(group18, url=urlgroup18)],
                 [InlineKeyboardButton(group19, url=urlgroup19),
                 InlineKeyboardButton(group20, url=urlgroup20)],
-
-                [InlineKeyboardButton("group1", callback_data='group1')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
+                [InlineKeyboardButton("Back", callback_data=str(back))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    query = update.callback_query
-    query.edit_message_text(text="Destek menüsüne hoş geldiniz. Lütfen bir seçenek seçin.", reply_markup=reply_markup)
+    await query.edit_message_text(text="Welcome to the Groups menu. <b>Please select an option..</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
-def youtube_menu(update, context):
-    keyboard = [[InlineKeyboardButton("📹 User Guide", url='https://youtu.be/LSUVdSDSw2g')],
-                [InlineKeyboardButton("📹 Vault [Stake - Withdraw]", url='https://youtu.be/XQEjGTUyMrw')],
-                [InlineKeyboardButton("📹 Supply & Borrow", url='https://youtu.be/iU2MUI4k6Ws')],
-                [InlineKeyboardButton("📹 Liquidation", url='https://youtu.be/1oZ-iQlWMDQ')],
-                [InlineKeyboardButton("English Playlist", url='https://youtube.com/playlist?list=PLcxhLxBPFSXxuyTQkSPhiXZpOeqVIOKpE')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
+async def youtube_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("\U0001F4F9 User Guide", url='https://youtu.be/LSUVdSDSw2g')],
+            [InlineKeyboardButton("\U0001F4F9 Vault [Stake - Withdraw]", url='https://youtu.be/XQEjGTUyMrw')],
+            [InlineKeyboardButton("\U0001F4F9 Supply & Borrow", url='https://youtu.be/iU2MUI4k6Ws')],
+            [InlineKeyboardButton("\U0001F4F9 Liquidation", url='https://youtu.be/1oZ-iQlWMDQ')],
+            [InlineKeyboardButton("\U0001F4C3 English Playlist", url='https://youtube.com/playlist?list=PLcxhLxBPFSXxuyTQkSPhiXZpOeqVIOKpE')],
+            [InlineKeyboardButton("\U0001F519 Back", callback_data=str(back))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
+    myoutube = 'Welcome to the Youtube menu.<b>. Please select an option..</b>\n'
+    await query.edit_message_text(text=myoutube, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def updates_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    myoutube = 'Welcome to the Youtube menu.<b>. Please select an option</b>\n'
-    query.edit_message_text(text=myoutube, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-
-
-def updates_menu(update, context):
-    keyboard = [[InlineKeyboardButton("Venus 2023 Community Survey Results", callback_data='https://community.venus.io/t/2023-community-survey-results/3242')],
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("Venus 2023 Community Survey Results", url='https://community.venus.io/t/2023-community-survey-results/3242')],
                 [InlineKeyboardButton("More Updates..", url='https://community.venus.io/')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
+                [InlineKeyboardButton("Back", callback_data=str(back))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text="Welcome to Updates and News menu. <b>Please select an option..</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def faq_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    query.edit_message_text(text="Destek menüsüne hoş geldiniz. Lütfen bir seçenek seçin.", reply_markup=reply_markup)
-
-
-
-def faq_menu(update, context):
-    keyboard =  [[InlineKeyboardButton("Destek 1", callback_data='support1')],
+    await query.answer()
+    keyboard =  [
                 [InlineKeyboardButton("How To Use Venus Guide?", url='https://medium.com/venusprotocol/how-to-use-venus-protocol-71cb09703fbf')],
                 [InlineKeyboardButton("How to Use Venus Protocol Mini Program on Binance App", url='https://medium.com/venusprotocol/how-to-use-venus-protocol-mini-program-on-binance-app-226b76a85312')],
                 [InlineKeyboardButton("How to setup BNB Chain on MetaMask?", url='https://medium.com/venusprotocol/venus-protocol-main-network-launched-52ea9929091f')],
                 [InlineKeyboardButton("How to use XVS Vault? How to stake XVS?", url='https://medium.com/@Venus_protocol/venus-vault-user-guide-cd1042b18401')],
                 [InlineKeyboardButton("How do liquidations work? 'Liquidation guide for Venus protocol'", url='https://community.venus.io/t/liquidation-guide-for-venus-protocol/2930')],
                 [InlineKeyboardButton("How to use Venus for lending or borrowing?", url='https://youtu.be/ZZMFM1gYFNw')],
-                [InlineKeyboardButton("Back", callback_data='back')]]
+                [InlineKeyboardButton("Back", callback_data=str(back))]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    query = update.callback_query
-    query.edit_message_text(text="Destek menüsüne hoş geldiniz. Lütfen bir seçenek seçin.", reply_markup=reply_markup)
+    await query.edit_message_text(text="Welcome to FAQ menu. <b>Please select an option..</b>", reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
-
-def button(update, context):
-    query = update.callback_query
-    if query.data == 'about':
-        about_menu(update, context)
-    elif query.data == 'xvs':
-        xvs_menu(update, context)
-    elif query.data == 'groups':
-        groups_menu(update, context)
-    elif query.data == 'youtube':
-        youtube_menu(update, context)
-    elif query.data == 'faq':
-        faq_menu(update, context)
-    elif query.data == 'updates':
-        updates_menu(update, context)
-    elif query.data == 'back':
-        startt(update, context)
+#async def tutorial(update: Update, context: CallbackContext):
+    # Grup mesajini sil
+#    await context.bot.delete_message(chat_id=update.callback_query.message.chat_id, message_id=update.callback_query.message.message_id)
     
-    elif query.data == 'group1':
-        group1(update, context)
-    elif query.data == 'group2':
-        group2(update, context)
-    elif query.data == 'group3':
-        group3(update, context)
+#start_handler = CommandHandler('start', start)
+#dispatcher.add_handler(start_handler)
+#updater.dispatcher.add_handler(CallbackQueryHandler(button))
+#updater.start_polling()
+#updater.idle()
 
-    else:
-        query.answer()
-        query.edit_message_text(text="Bu bir test.")
+def main() -> None:
+    """Start the bot."""
+    # Create the Application and pass it your bot's token.
+    bot = Application.builder().token(TOKEN).build()
 
-start_handler = CommandHandler('start', start)
-dispatcher.add_handler(start_handler)
+    # on different commands - answer in Telegram
 
-updater.dispatcher.add_handler(CallbackQueryHandler(button))
+#S    bot.add_handler(CommandHandler("help", help_command))
+#    bot.add_handler(ChatMemberHandler(filters.status_update.new_chat_members, welcome))
+#    bot.add_handler(ChatMemberHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+    # Handle members joining/leaving chats.
+    bot.add_handler(ChatMemberHandler(welcome, ChatMemberHandler.CHAT_MEMBER))
+#    bot.add_handler(CallbackQueryHandler(tutorial, pattern=r'^tutorial\|.*$'))
 
-updater.start_polling()
-updater.idle()
+    # on non command i.e message - echo the message on Telegram
+#    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            START_ROUTES: [
+                CallbackQueryHandler(about_menu, pattern="^" + str(about) + "$"),
+                CallbackQueryHandler(xvs_menu, pattern="^" + str(xvs) + "$"),
+                CallbackQueryHandler(groups_menu, pattern="^" + str(groups) + "$"),
+                CallbackQueryHandler(youtube_menu, pattern="^" + str(youtube) + "$"),
+                CallbackQueryHandler(faq_menu, pattern="^" + str(faq) + "$"),
+                CallbackQueryHandler(updates_menu, pattern="^" + str(updates) + "$"),
+                CallbackQueryHandler(audits_menu, pattern="^" + str(audits) + "$"),
+                CallbackQueryHandler(startt, pattern="^" + str(back) + "$"),   
+            ],
+            END_ROUTES: [
+                CallbackQueryHandler(startt, pattern="^" + str(back) + "$"),
+            ],
+        },
+        fallbacks=[CommandHandler("start", start)],
+        #per_message=True  # burada per_message parametresi True olarak ayarlan?yor.
+    )
+
+    # Add ConversationHandler to application that will be used for handling updates
+    bot.add_handler(conv_handler)
+    # Run the bot until the user presses Ctrl-C
+    bot.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    main()
