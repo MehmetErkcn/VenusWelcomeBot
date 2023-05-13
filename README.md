@@ -10,7 +10,7 @@ This project is currently being developed by the Venus Community
 <p>Available on Telegram as  <a target="_blank" rel="nofollow noopener" href="https://t.me/venusinfobot/">@VenusWelcomeBot</a> </p>
 
 
-# Use Your Forked Link Here And Edit VegetaRobot/config.py
+# Use Your Forked Link Here And Edit VenusWelcomeBot/Sample.env
 git clone [https://github.com/MehmetErkcn/VenusWelcomeBot] && cd VenusWelcomeBot
 
 # Install Packages
