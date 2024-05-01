@@ -17,3 +17,5 @@ git clone [https://github.com/MehmetErkcn/VenusWelcomeBot] && cd VenusWelcomeBot
 pip3 install -U -r requirements.txt
 # Run Bot
 python3 -m VenusWelcomeBot
+
+..
